@@ -21,6 +21,13 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(rejectUnsafeMongoKeys);
+app.get('/', (_req, res) => res.json({
+    data: {
+        service: 'MODEA API',
+        status: 'ok',
+        health: '/api/v1/health',
+    },
+}));
 app.use('/api/v1', publicRouter);
 app.use('/api/v1/admin', adminRouter);
 app.use(notFound);
