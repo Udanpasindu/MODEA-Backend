@@ -1,0 +1,3 @@
+import mongoose,{Schema} from 'mongoose';
+const schema=new Schema({product:{type:Schema.Types.ObjectId,ref:'Product',required:true,index:true},variantId:{type:Schema.Types.ObjectId,required:true},type:{type:String,enum:['manual','order_confirm','order_cancel'],required:true},change:{type:Number,required:true},previous:{type:Number,required:true},resulting:{type:Number,required:true,min:0},reason:{type:String,required:true},orderReference:String,admin:{type:Schema.Types.ObjectId,ref:'Admin'}},{timestamps:true});
+export const InventoryMovement=mongoose.model('InventoryMovement',schema);

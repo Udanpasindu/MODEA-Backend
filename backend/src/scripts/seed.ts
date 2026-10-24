@@ -1,0 +1,73 @@
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import {env} from '../config/env.js';
+import {Admin} from '../models/Admin.js';
+import {Settings} from '../models/Settings.js';
+import {Category,Collection} from '../models/Taxonomy.js';
+import {Product} from '../models/Product.js';
+
+export async function seedDevelopmentData(){
+if(env.ADMIN_BOOTSTRAP_USERNAME&&env.ADMIN_BOOTSTRAP_PASSWORD){
+  await Admin.findOneAndUpdate(
+    {username:env.ADMIN_BOOTSTRAP_USERNAME.toLowerCase()},
+    {name:'MODEA Owner',username:env.ADMIN_BOOTSTRAP_USERNAME.toLowerCase(),passwordHash:await bcrypt.hash(env.ADMIN_BOOTSTRAP_PASSWORD,12),role:'owner',active:true},
+    {upsert:true,new:true,setDefaultsOnInsert:true}
+  );
+}
+
+const taxonomy=async(Model:typeof Category,name:string,slug:string,description:string,order:number,featured=false)=>Model.findOneAndUpdate({slug},{$set:{name,description,order,published:true,featured}},{upsert:true,new:true});
+const [dresses,sets,knitwear,occasion]=await Promise.all([
+  taxonomy(Category,'Dresses','dresses','Sculptural silhouettes for every entrance.',1),
+  taxonomy(Category,'Co-ords','co-ords','Considered separates designed to move together.',2),
+  taxonomy(Category,'Knitwear','knitwear','Soft structure for elevated everyday dressing.',3),
+  taxonomy(Category,'Occasion','occasion','Refined pieces for memorable evenings.',4)
+]);
+const [nocturne,atelier,resort]=await Promise.all([
+  taxonomy(Collection,'Nocturne','nocturne','Evening pieces shaped by light and shadow.',1,true),
+  taxonomy(Collection,'Atelier Essentials','atelier-essentials','Quiet-luxury foundations with an architectural point of view.',2,true),
+  taxonomy(Collection,'The Resort Edit','resort-edit','Fluid silhouettes for sunlit destinations.',3,true)
+]);
+
+await Settings.findOneAndUpdate({key:'store'},{$setOnInsert:{storeName:'MODEA CLOTHING',currency:env.CURRENCY_CODE,announcement:'The new MODEA edit has arrived · Limited release',campaignTitle:'The New Form',campaignCopy:'Draped satin, sculptural pleats and confident silhouettes for the season ahead.',lowStockThreshold:3,deliveryFee:450,freeDeliveryThreshold:20000,flashSale:{enabled:true,text:'FLASH EDIT · UP TO 20% OFF SELECTED STYLES',link:'/shop'},hero:{mediaType:'image',imageUrl:'/images/hero.png',videoUrl:'',eyebrow:'Nocturne · Chapter 01',title:'Dress like you mean it.',copy:'Modern silhouettes. Quiet power. Pieces made to hold the room.',ctaLabel:'Shop the collection',ctaLink:'/shop'}}},{upsert:true,new:true});
+
+const sizes=['XS','S','M','L','XL'];
+const products=[
+  {name:'Celeste Draped Dress',slug:'celeste-draped-dress',sku:'MOD-DR-001',description:'A floor-skimming evening silhouette with sculptural draping and fluid movement.',material:'Premium satin blend',care:'Dry clean only',category:dresses,collection:nocturne,image:'/images/hero.png',alt:'Black draped evening dress',price:18900,compareAtPrice:21900,color:'Black',featured:true,bestSeller:true},
+  {name:'Aurelia Pleated Midi',slug:'aurelia-pleated-midi',sku:'MOD-DR-002',description:'Airy knife pleats meet an asymmetric shoulder and a softly defined waist.',material:'Pleated chiffon with full lining',care:'Gentle hand wash',category:occasion,collection:atelier,image:'/images/ivory-pleated.png',alt:'Ivory asymmetric pleated midi dress',price:14900,compareAtPrice:16900,color:'Ivory',featured:true,bestSeller:true},
+  {name:'Sienna Rib Knit Dress',slug:'sienna-rib-knit-dress',sku:'MOD-KN-001',description:'A refined rib-knit midi with a boat neckline and softly draped sleeves.',material:'Viscose stretch rib knit',care:'Cold hand wash and reshape flat',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Chocolate rib knit midi dress',price:11900,color:'Chocolate',featured:true,bestSeller:true},
+  {name:'Élan Satin Co-ord',slug:'elan-satin-co-ord',sku:'MOD-ST-001',description:'A liquid satin cowl top and sweeping maxi skirt designed as one effortless statement.',material:'Silk-touch satin',care:'Dry clean recommended',category:sets,collection:nocturne,image:'/images/champagne-set.png',alt:'Champagne satin top and maxi skirt set',price:17900,compareAtPrice:19900,color:'Champagne',featured:true,bestSeller:false},
+  {name:'Solene Sculpted Mini',slug:'solene-sculpted-mini',sku:'MOD-DR-003',description:'A clean ivory mini silhouette shaped by precise pleating and a statement shoulder.',material:'Structured crepe',care:'Dry clean only',category:dresses,collection:atelier,image:'/images/ivory-pleated.png',alt:'Ivory sculpted dress',price:12900,color:'Ivory',featured:false,bestSeller:false},
+  {name:'Mara Column Knit',slug:'mara-column-knit',sku:'MOD-KN-002',description:'An elongated column dress balancing soft stretch with clean architectural lines.',material:'Premium rib knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Brown column knit dress',price:10900,color:'Espresso',featured:false,bestSeller:true},
+  {name:'Seraphine Satin Set',slug:'seraphine-satin-set',sku:'MOD-ST-002',description:'A light-catching evening co-ord with an elegant draped neckline and fluid skirt.',material:'Premium satin',care:'Dry clean only',category:sets,collection:resort,image:'/images/champagne-set.png',alt:'Champagne satin evening set',price:16500,color:'Pearl',featured:true,bestSeller:false},
+  {name:'Liora Occasion Midi',slug:'liora-occasion-midi',sku:'MOD-DR-004',description:'A graceful occasion dress with cascading pleats and an asymmetric hem.',material:'Soft pleated georgette',care:'Gentle hand wash',category:occasion,collection:resort,image:'/images/ivory-pleated.png',alt:'Light pleated occasion midi dress',price:13900,color:'Soft Ivory',featured:false,bestSeller:false},
+  {name:'Noa Draped Maxi',slug:'noa-draped-maxi',sku:'MOD-DR-005',description:'A dramatic black maxi with a softly gathered bodice and sweeping hem.',material:'Satin-back crepe',care:'Dry clean only',category:dresses,collection:nocturne,image:'/images/hero.png',alt:'Black draped maxi dress',price:17900,color:'Obsidian',featured:true,bestSeller:true},
+  {name:'Amara Evening Skirt Set',slug:'amara-evening-skirt-set',sku:'MOD-ST-003',description:'A luminous two-piece designed for destination dinners and evening celebrations.',material:'Silk-touch satin',care:'Dry clean recommended',category:sets,collection:resort,image:'/images/champagne-set.png',alt:'Champagne evening skirt set',price:15900,color:'Champagne',featured:false,bestSeller:false},
+  {name:'Inez Soft Sleeve Midi',slug:'inez-soft-sleeve-midi',sku:'MOD-KN-003',description:'A soft ribbed midi with relaxed sleeves, designed for polished everyday dressing.',material:'Viscose blend knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Chocolate soft sleeve midi dress',price:9900,color:'Cocoa',featured:false,bestSeller:false},
+  {name:'Vera Pleat Dress',slug:'vera-pleat-dress',sku:'MOD-DR-006',description:'Fine pleats and an asymmetric line create movement from every angle.',material:'Pleated chiffon',care:'Gentle hand wash',category:occasion,collection:resort,image:'/images/ivory-pleated.png',alt:'Ivory flowing pleat dress',price:14500,color:'Porcelain',featured:false,bestSeller:true},
+  {name:'Nyla Bow Shoulder Midi',slug:'nyla-bow-shoulder-midi',sku:'MOD-DR-007',description:'A youthful pleated midi finished with a sculptural bow shoulder and floating asymmetric hem.',material:'Airy pleated chiffon',care:'Gentle hand wash',category:dresses,collection:resort,image:'/images/ivory-pleated.png',alt:'Ivory bow shoulder midi dress',price:12500,color:'Cream',featured:true,bestSeller:false},
+  {name:'Mila Cocoa Knit Dress',slug:'mila-cocoa-knit-dress',sku:'MOD-KN-004',description:'A polished cocoa knit dress with a flattering column line and relaxed sleeves.',material:'Soft stretch viscose knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Cocoa rib knit dress',price:9500,color:'Cocoa',featured:false,bestSeller:true},
+  {name:'Aria Champagne Co-ord',slug:'aria-champagne-co-ord',sku:'MOD-ST-004',description:'A luminous draped top and maxi skirt pairing created for celebrations after dark.',material:'Liquid satin',care:'Dry clean recommended',category:sets,collection:nocturne,image:'/images/champagne-set.png',alt:'Champagne satin co-ord',price:16900,color:'Gold Champagne',featured:true,bestSeller:true},
+  {name:'Elise Pleated Party Dress',slug:'elise-pleated-party-dress',sku:'MOD-DR-008',description:'A playful occasion silhouette with fine pleats, a defined waist and graceful movement.',material:'Pleated georgette',care:'Gentle hand wash',category:occasion,collection:resort,image:'/images/ivory-pleated.png',alt:'Ivory pleated party dress',price:11900,color:'Vanilla',featured:false,bestSeller:false},
+  {name:'Rhea Espresso Midi',slug:'rhea-espresso-midi',sku:'MOD-KN-005',description:'A sleek ribbed midi for coffee dates, workdays and understated evening styling.',material:'Premium rib knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Espresso knit midi dress',price:10500,color:'Espresso',featured:false,bestSeller:false},
+  {name:'Alba Satin Evening Set',slug:'alba-satin-evening-set',sku:'MOD-ST-005',description:'A modern two-piece with a fluid cowl neckline and an elegant floor-length skirt.',material:'Silk-touch satin',care:'Dry clean only',category:sets,collection:nocturne,image:'/images/champagne-set.png',alt:'Pearl satin evening set',price:17500,color:'Pearl',featured:true,bestSeller:false},
+  {name:'Celine Ivory Occasion Dress',slug:'celine-ivory-occasion-dress',sku:'MOD-DR-009',description:'Soft architectural pleats and an asymmetric shoulder create an unforgettable entrance.',material:'Structured chiffon',care:'Dry clean only',category:occasion,collection:atelier,image:'/images/ivory-pleated.png',alt:'Ivory architectural occasion dress',price:15500,color:'Ivory',featured:false,bestSeller:true},
+  {name:'Zara Chocolate Column',slug:'zara-chocolate-column',sku:'MOD-KN-006',description:'A contemporary long-sleeve column dress with a clean neckline and tactile rib finish.',material:'Viscose blend knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Chocolate column dress',price:11500,color:'Dark Chocolate',featured:true,bestSeller:false},
+  {name:'Luna Draped Black Gown',slug:'luna-draped-black-gown',sku:'MOD-DR-010',description:'An after-dark gown with sweeping volume, soft gathering and effortless drama.',material:'Satin-back crepe',care:'Dry clean only',category:dresses,collection:nocturne,image:'/images/hero.png',alt:'Draped black evening gown',price:19500,color:'Black',featured:true,bestSeller:true},
+  {name:'Talia Pearl Skirt Set',slug:'talia-pearl-skirt-set',sku:'MOD-ST-006',description:'A refined satin pairing with a softly draped top and fluid maxi skirt.',material:'Premium satin',care:'Dry clean recommended',category:sets,collection:resort,image:'/images/champagne-set.png',alt:'Pearl satin skirt set',price:16200,color:'Pearl',featured:false,bestSeller:false},
+  {name:'Isla Pleated Celebration Midi',slug:'isla-pleated-celebration-midi',sku:'MOD-DR-011',description:'A light, feminine midi designed for birthdays, dinners and special celebrations.',material:'Pleated chiffon with lining',care:'Gentle hand wash',category:dresses,collection:resort,image:'/images/ivory-pleated.png',alt:'Light pleated celebration midi dress',price:12800,color:'Soft Cream',featured:false,bestSeller:true},
+  {name:'Demi Everyday Knit Midi',slug:'demi-everyday-knit-midi',sku:'MOD-KN-007',description:'An easy fitted knit with softly relaxed sleeves for elevated everyday wardrobes.',material:'Stretch rib knit',care:'Cold hand wash',category:knitwear,collection:atelier,image:'/images/chocolate-knit.png',alt:'Brown everyday knit midi',price:8900,color:'Mocha',featured:false,bestSeller:false}
+];
+
+for(const [index,p] of products.entries()){
+  const variants=sizes.map((size,i)=>({sku:`${p.sku}-${size}-${p.color.slice(0,3).toUpperCase()}`,size,color:p.color,stock:4+((index+i)%8),reserved:0}));
+  await Product.findOneAndUpdate({slug:p.slug},{$set:{name:p.name,slug:p.slug,sku:p.sku,description:p.description,material:p.material,care:p.care,category:p.category._id,collections:[p.collection._id],images:[{url:p.image,alt:p.alt,order:0}],price:p.price,compareAtPrice:p.compareAtPrice,variants,featured:p.featured,newArrival:true,bestSeller:p.bestSeller,status:'published',seo:{title:`${p.name} | MODEA CLOTHING`,description:p.description}}},{upsert:true,new:true,runValidators:true});
+}
+
+console.log(`Development seed complete: ${products.length} products and admin "${env.ADMIN_BOOTSTRAP_USERNAME}" updated.`);
+}
+
+const isDirectRun=process.argv[1]?.endsWith('seed.js')||process.argv[1]?.endsWith('seed.ts');
+if(isDirectRun){
+  await mongoose.connect(env.MONGODB_URI,{dbName:env.MONGODB_DB_NAME});
+  try{await seedDevelopmentData()}finally{await mongoose.disconnect()}
+}

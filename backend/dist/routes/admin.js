@@ -1,0 +1,69 @@
+import { Router } from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
+import slugify from 'slugify';
+import { v2 as cloudinary } from 'cloudinary';
+import mongoose from 'mongoose';
+import { env } from '../config/env.js';
+import { Admin } from '../models/Admin.js';
+import { Product } from '../models/Product.js';
+import { Category, Collection } from '../models/Taxonomy.js';
+import { Order } from '../models/Order.js';
+import { Settings } from '../models/Settings.js';
+import { InventoryMovement } from '../models/InventoryMovement.js';
+import { requireAdmin } from '../middleware/auth.js';
+import { AppError } from '../lib/errors.js';
+export const adminRouter = Router();
+adminRouter.post('/auth/login', rateLimit({ windowMs: 15 * 60_000, limit: 8 }), async (req, res) => { const { username, password } = z.object({ username: z.string().min(3), password: z.string().min(8) }).parse(req.body); const admin = await Admin.findOne({ username: username.toLowerCase(), active: true }); if (!admin || !await bcrypt.compare(password, admin.passwordHash))
+    throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid username or password'); const token = jwt.sign({ id: String(admin._id), role: admin.role }, env.JWT_SECRET, { expiresIn: '8h' }); res.cookie('modea_admin', token, { httpOnly: true, sameSite: 'strict', secure: env.NODE_ENV === 'production', maxAge: 8 * 60 * 60_000, path: '/' }); admin.lastLoginAt = new Date(); await admin.save(); res.json({ data: { id: admin._id, name: admin.name, username: admin.username, role: admin.role } }); });
+adminRouter.post('/auth/logout', (_q, r) => { r.clearCookie('modea_admin', { path: '/' }); r.status(204).end(); });
+adminRouter.use(requireAdmin);
+adminRouter.get('/auth/me', async (req, res) => res.json({ data: await Admin.findById(req.admin.id).select('name username role') }));
+const productInput = z.object({ name: z.string().min(2), slug: z.string().optional(), sku: z.string().min(2), description: z.string().min(10), material: z.string().optional(), care: z.string().optional(), category: z.string().optional(), collections: z.array(z.string()).default([]), images: z.array(z.object({ url: z.string().url(), publicId: z.string().optional(), alt: z.string().min(1), order: z.number().default(0) })).default([]), price: z.number().min(0), compareAtPrice: z.number().min(0).optional(), variants: z.array(z.object({ sku: z.string().min(2), size: z.string().min(1), color: z.string().min(1), stock: z.number().int().min(0), reserved: z.number().int().min(0).default(0) })).min(1), featured: z.boolean().default(false), newArrival: z.boolean().default(false), bestSeller: z.boolean().default(false), status: z.enum(['draft', 'published', 'archived']).default('draft'), seo: z.object({ title: z.string().optional(), description: z.string().optional() }).optional() });
+adminRouter.get('/dashboard', async (_q, res) => { const [totalProducts, activeProducts, outOfStock, totalOrders, pending, confirmed, recent] = await Promise.all([Product.countDocuments(), Product.countDocuments({ status: 'published' }), Product.countDocuments({ variants: { $not: { $elemMatch: { stock: { $gt: 0 } } } } }), Order.countDocuments(), Order.countDocuments({ status: 'pending_whatsapp' }), Order.countDocuments({ status: 'confirmed' }), Order.find().sort({ createdAt: -1 }).limit(6)]); res.json({ data: { totalProducts, activeProducts, outOfStock, totalOrders, pending, confirmed, recent } }); });
+adminRouter.get('/products', async (req, res) => { const page = Math.max(1, Number(req.query.page) || 1), limit = 20; const filter = req.query.search ? { $text: { $search: String(req.query.search) } } : {}; const [items, total] = await Promise.all([Product.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit), Product.countDocuments(filter)]); res.json({ data: { items, pagination: { page, total, pages: Math.ceil(total / limit) } } }); });
+adminRouter.post('/products', async (req, res) => { const data = productInput.parse(req.body); res.status(201).json({ data: await Product.create({ ...data, slug: data.slug || slugify(data.name, { lower: true, strict: true }) }) }); });
+adminRouter.get('/products/:id', async (req, res) => res.json({ data: await Product.findById(req.params.id) }));
+adminRouter.patch('/products/:id', async (req, res) => { const data = productInput.partial().parse(req.body); const item = await Product.findByIdAndUpdate(req.params.id, data, { new: true, runValidators: true }); if (!item)
+    throw new AppError(404, 'NOT_FOUND', 'Product not found'); res.json({ data: item }); });
+adminRouter.delete('/products/:id', async (req, res) => { const referenced = await Order.exists({ 'items.product': req.params.id }); if (referenced) {
+    await Product.findByIdAndUpdate(req.params.id, { status: 'archived' });
+    return res.status(204).end();
+} await Product.findByIdAndDelete(req.params.id); res.status(204).end(); });
+adminRouter.get('/inventory', async (_q, res) => res.json({ data: await Product.find({ status: { $ne: 'archived' } }).select('name slug variants') }));
+adminRouter.patch('/inventory', async (req, res) => { const data = z.object({ productId: z.string(), variantId: z.string(), stock: z.number().int().min(0), reason: z.string().min(3) }).parse(req.body); const p = await Product.findById(data.productId); const v = p?.variants.id(data.variantId); if (!p || !v)
+    throw new AppError(404, 'NOT_FOUND', 'Variant not found'); const previous = v.stock; v.stock = data.stock; await p.save(); await InventoryMovement.create({ product: p._id, variantId: v._id, type: 'manual', change: data.stock - previous, previous, resulting: data.stock, reason: data.reason, admin: req.admin.id }); res.json({ data: v }); });
+adminRouter.get('/inventory/movements', async (_q, res) => res.json({ data: await InventoryMovement.find().sort({ createdAt: -1 }).limit(200).populate('product', 'name') }));
+for (const [path, Model] of [['categories', Category], ['collections', Collection]]) {
+    adminRouter.get(`/${path}`, async (_q, r) => r.json({ data: await Model.find().sort({ order: 1 }) }));
+    adminRouter.post(`/${path}`, async (req, r) => { const d = z.object({ name: z.string().min(2), slug: z.string().optional(), description: z.string().optional(), image: z.string().url().optional(), published: z.boolean().default(true), featured: z.boolean().default(false), order: z.number().default(0) }).parse(req.body); r.status(201).json({ data: await Model.create({ ...d, slug: d.slug || slugify(d.name, { lower: true, strict: true }) }) }); });
+    adminRouter.patch(`/${path}/:id`, async (req, r) => r.json({ data: await Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true }) }));
+    adminRouter.delete(`/${path}/:id`, async (req, r) => { await Model.findByIdAndDelete(req.params.id); r.status(204).end(); });
+}
+adminRouter.get('/orders', async (req, res) => { const filter = req.query.status ? { status: req.query.status } : {}; res.json({ data: await Order.find(filter).sort({ createdAt: -1 }).limit(100) }); });
+adminRouter.get('/orders/:id', async (req, res) => res.json({ data: await Order.findById(req.params.id) }));
+adminRouter.patch('/orders/:id/status', async (req, res) => { const { status, adminNotes } = z.object({ status: z.enum(['pending_whatsapp', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled']), adminNotes: z.string().max(1000).optional() }).parse(req.body); const session = await mongoose.startSession(); let updated; await session.withTransaction(async () => { const order = await Order.findById(req.params.id).session(session); if (!order)
+    throw new AppError(404, 'NOT_FOUND', 'Order not found'); if (status === 'confirmed' && !order.stockApplied) {
+    for (const line of order.items) {
+        const quantity = line.quantity ?? 0;
+        const result = await Product.updateOne({ _id: line.product, variants: { $elemMatch: { _id: line.variantId, stock: { $gte: quantity } } } }, { $inc: { 'variants.$.stock': -quantity } }, { session });
+        if (!result.modifiedCount)
+            throw new AppError(409, 'INSUFFICIENT_STOCK', `${line.name} no longer has enough stock`);
+        await InventoryMovement.create([{ product: line.product, variantId: line.variantId, type: 'order_confirm', change: -quantity, previous: 0, resulting: 0, reason: 'Order confirmed', orderReference: order.reference, admin: req.admin.id }], { session });
+    }
+    order.stockApplied = true;
+    order.whatsappState = 'owner_confirmed';
+} if (status === 'cancelled' && order.stockApplied) {
+    for (const line of order.items) {
+        const quantity = line.quantity ?? 0;
+        await Product.updateOne({ _id: line.product, 'variants._id': line.variantId }, { $inc: { 'variants.$.stock': quantity } }, { session });
+    }
+    order.stockApplied = false;
+} order.status = status; if (adminNotes !== undefined)
+    order.adminNotes = adminNotes; updated = await order.save({ session }); }); await session.endSession(); res.json({ data: updated }); });
+adminRouter.get('/settings', async (_q, r) => r.json({ data: await Settings.findOne({ key: 'store' }) }));
+adminRouter.patch('/settings', async (req, res) => { const relativeOrUrl = z.string().refine(v => v.startsWith('/') || z.string().url().safeParse(v).success, 'Use an absolute URL or a path beginning with /'); const safe = z.object({ storeName: z.string().min(2).optional(), contactEmail: z.string().email().optional(), phone: z.string().optional(), address: z.string().optional(), currency: z.string().length(3).optional(), deliveryFee: z.number().min(0).optional(), freeDeliveryThreshold: z.number().min(0).optional(), lowStockThreshold: z.number().int().min(0).optional(), announcement: z.string().max(200).optional(), campaignTitle: z.string().max(120).optional(), campaignCopy: z.string().max(500).optional(), flashSale: z.object({ enabled: z.boolean(), text: z.string().max(160), link: relativeOrUrl }).optional(), hero: z.object({ mediaType: z.enum(['image', 'video']), imageUrl: relativeOrUrl, videoUrl: z.union([relativeOrUrl, z.literal('')]), eyebrow: z.string().max(80), title: z.string().max(120), copy: z.string().max(300), ctaLabel: z.string().max(60), ctaLink: relativeOrUrl }).optional(), socials: z.record(z.string().url().or(z.literal(''))).optional(), policies: z.record(z.string()).optional() }).parse(req.body); res.json({ data: await Settings.findOneAndUpdate({ key: 'store' }, safe, { new: true, upsert: true, runValidators: true }) }); });
+adminRouter.post('/uploads/signature', (_q, res) => { if (!env.CLOUDINARY_API_SECRET || !env.CLOUDINARY_API_KEY)
+    throw new AppError(503, 'UPLOADS_NOT_CONFIGURED', 'Image uploads are not configured'); const timestamp = Math.floor(Date.now() / 1000); const folder = 'modea/products'; const signature = cloudinary.utils.api_sign_request({ timestamp, folder }, env.CLOUDINARY_API_SECRET); res.json({ data: { timestamp, folder, signature, apiKey: env.CLOUDINARY_API_KEY, cloudName: env.CLOUDINARY_CLOUD_NAME } }); });
