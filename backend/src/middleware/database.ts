@@ -21,7 +21,11 @@ async function connectDatabase(): Promise<void> {
 }
 
 export const ensureDatabaseConnection: RequestHandler = async (req, _res, next) => {
-  if (req.path === '/' || req.path === '/api/v1/health') {
+  const pathname = req.originalUrl.split('?')[0] ?? '';
+  const isDatabaseRoute = pathname.startsWith('/api/v1/')
+    && pathname !== '/api/v1/health';
+
+  if (!isDatabaseRoute) {
     next();
     return;
   }
