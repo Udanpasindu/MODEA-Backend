@@ -7,6 +7,7 @@ import { publicRouter } from './routes/public.js';
 import { adminRouter } from './routes/admin.js';
 import { errors, notFound } from './middleware/error.js';
 import { rejectUnsafeMongoKeys } from './middleware/sanitize.js';
+import { ensureDatabaseConnection } from './middleware/database.js';
 // Helmet is callable at runtime, but some NodeNext environments interpret
 // its CommonJS declaration as a non-callable module namespace.
 const helmet = helmetPackage;
@@ -21,6 +22,7 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(rejectUnsafeMongoKeys);
+app.use(ensureDatabaseConnection);
 app.get('/', (_req, res) => res.json({
     data: {
         service: 'MODEA API',
