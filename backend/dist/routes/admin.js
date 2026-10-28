@@ -16,7 +16,7 @@ import { InventoryMovement } from '../models/InventoryMovement.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../lib/errors.js';
 export const adminRouter = Router();
-adminRouter.post('/auth/login', rateLimit({ windowMs: 15 * 60_000, limit: 8 }), async (req, res) => { const { username, password } = z.object({ username: z.string().min(3), password: z.string().min(8) }).parse(req.body); const admin = await Admin.findOne({ username: username.toLowerCase(), active: true }); if (!admin || !await bcrypt.compare(password, admin.passwordHash))
+adminRouter.post('/auth/login', rateLimit({ windowMs: 15 * 60_000, limit: 8 }), async (req, res) => { const { username, password } = z.object({ username: z.string().min(3), password: z.string().min(5) }).parse(req.body); const admin = await Admin.findOne({ username: username.toLowerCase(), active: true }); if (!admin || !await bcrypt.compare(password, admin.passwordHash))
     throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid username or password'); const token = jwt.sign({ id: String(admin._id), role: admin.role }, env.JWT_SECRET, { expiresIn: '8h' }); res.cookie('modea_admin', token, { httpOnly: true, sameSite: 'strict', secure: env.NODE_ENV === 'production', maxAge: 8 * 60 * 60_000, path: '/' }); admin.lastLoginAt = new Date(); await admin.save(); res.json({ data: { id: admin._id, name: admin.name, username: admin.username, role: admin.role } }); });
 adminRouter.post('/auth/logout', (_q, r) => { r.clearCookie('modea_admin', { path: '/' }); r.status(204).end(); });
 adminRouter.use(requireAdmin);
