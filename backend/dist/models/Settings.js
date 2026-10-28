@@ -1,3 +1,12 @@
 import mongoose, { Schema } from 'mongoose';
-const schema = new Schema({ key: { type: String, default: 'store', unique: true }, storeName: { type: String, default: 'MODEA CLOTHING' }, contactEmail: String, phone: String, address: String, currency: { type: String, default: 'LKR' }, deliveryFee: { type: Number, default: 0, min: 0 }, freeDeliveryThreshold: { type: Number, min: 0 }, lowStockThreshold: { type: Number, default: 3, min: 0 }, announcement: String, campaignTitle: String, campaignCopy: String, flashSale: { enabled: { type: Boolean, default: false }, text: String, link: String }, seasonalEffect: { enabled: { type: Boolean, default: false }, type: { type: String, enum: ['snow', 'vesak', 'new-year', 'halloween', 'valentine', 'none'], default: 'none' }, intensity: { type: Number, min: 1, max: 3, default: 2 } }, hero: { mediaType: { type: String, enum: ['image', 'video'], default: 'image' }, imageUrl: { type: String, default: '/images/hero.png' }, videoUrl: String, eyebrow: String, title: String, copy: String, ctaLabel: String, ctaLink: String }, socials: { instagram: String, facebook: String, tiktok: String }, policies: { privacy: String, terms: String, shipping: String } }, { timestamps: true });
+const schema = new Schema({
+    key: { type: String, default: 'store', unique: true },
+    storeName: { type: String, default: 'MODEA CLOTHING' }, contactEmail: String, phone: String, address: String,
+    currency: { type: String, default: 'LKR' }, deliveryFee: { type: Number, default: 0, min: 0 }, freeDeliveryThreshold: { type: Number, min: 0 }, lowStockThreshold: { type: Number, default: 3, min: 0 },
+    announcement: String, campaignTitle: String, campaignCopy: String,
+    flashSale: { enabled: { type: Boolean, default: false }, text: String, link: String },
+    seasonalEffect: { enabled: { type: Boolean, default: false }, type: { type: String, enum: ['snow', 'vesak', 'vaisakhi', 'new-year', 'sinhala-tamil-new-year', 'halloween', 'valentine', 'none'], default: 'none' }, intensity: { type: Number, min: 1, max: 3, default: 2 } },
+    hero: { mediaType: { type: String, enum: ['image', 'video'], default: 'image' }, imageUrl: { type: String, default: '/images/hero.png' }, videoUrl: String, eyebrow: String, title: String, copy: String, ctaLabel: String, ctaLink: String },
+    socials: { instagram: String, facebook: String, tiktok: String }, policies: { privacy: String, terms: String, shipping: String },
+}, { timestamps: true });
 export const Settings = mongoose.model('Settings', schema);
