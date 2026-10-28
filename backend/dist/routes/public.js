@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { Product } from '../models/Product.js';
 import { Category, Collection } from '../models/Taxonomy.js';
 import { Settings } from '../models/Settings.js';
+import { ContactMessage } from '../models/ContactMessage.js';
 import { checkout, checkoutSchema } from '../services/checkout.js';
 export const publicRouter = Router();
 publicRouter.get('/health', (_q, r) => r.json({ data: { status: 'ok' } }));
@@ -26,4 +27,4 @@ publicRouter.get('/collections/:slug', async (req, res) => { const item = await 
     return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Collection not found' } }); res.json({ data: item }); });
 publicRouter.get('/settings/public', async (_q, r) => { const s = await Settings.findOne({ key: 'store' }).lean(); r.json({ data: s ?? { storeName: 'MODEA CLOTHING', currency: 'LKR' } }); });
 publicRouter.post('/orders/checkout', rateLimit({ windowMs: 60000, limit: 8 }), async (req, res) => res.status(201).json({ data: await checkout(checkoutSchema.parse(req.body)) }));
-publicRouter.post('/contact', rateLimit({ windowMs: 60000, limit: 5 }), async (req, res) => { z.object({ name: z.string().min(2), email: z.string().email(), message: z.string().min(10).max(2000) }).parse(req.body); res.status(202).json({ data: { accepted: true } }); });
+publicRouter.post('/contact', rateLimit({ windowMs: 60000, limit: 5 }), async (req, res) => { const data = z.object({ name: z.string().min(2), email: z.string().email(), phone: z.string().min(7).max(20), message: z.string().min(10).max(2000) }).parse(req.body); const item = await ContactMessage.create(data); res.status(201).json({ data: { accepted: true, id: item._id } }); });

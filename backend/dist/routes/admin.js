@@ -12,6 +12,7 @@ import { Product } from '../models/Product.js';
 import { Category, Collection } from '../models/Taxonomy.js';
 import { Order } from '../models/Order.js';
 import { Settings } from '../models/Settings.js';
+import { ContactMessage } from '../models/ContactMessage.js';
 import { InventoryMovement } from '../models/InventoryMovement.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { AppError } from '../lib/errors.js';
@@ -76,5 +77,13 @@ else if (!settings.seasonalEffect?.type) {
     await settings.save();
 } res.json({ data: settings.seasonalEffect }); });
 adminRouter.patch('/seasonal-effect', async (req, res) => { const seasonalEffect = z.object({ enabled: z.boolean(), type: z.enum(['snow', 'vesak', 'vaisakhi', 'new-year', 'sinhala-tamil-new-year', 'halloween', 'valentine', 'none']), intensity: z.number().int().min(1).max(3) }).parse(req.body); res.json({ data: await Settings.findOneAndUpdate({ key: 'store' }, { seasonalEffect }, { new: true, upsert: true, runValidators: true }) }); });
+adminRouter.get('/messages', async (req, res) => { const search = String(req.query.search || '').trim(), filter = {}; if (search)
+    filter.$or = [{ name: { $regex: search, $options: 'i' } }, { email: { $regex: search, $options: 'i' } }, { phone: { $regex: search, $options: 'i' } }, { message: { $regex: search, $options: 'i' } }]; if (req.query.read === 'true')
+    filter.read = true; if (req.query.read === 'false')
+    filter.read = false; res.json({ data: await ContactMessage.find(filter).sort({ createdAt: -1 }).limit(200) }); });
+adminRouter.patch('/messages/:id/read', async (req, res) => res.json({ data: await ContactMessage.findByIdAndUpdate(req.params.id, { read: true }, { new: true }) }));
+adminRouter.get('/content-settings', async (_req, res) => { const settings = await Settings.findOneAndUpdate({ key: 'store' }, { $setOnInsert: { whatsappNumber: env.WHATSAPP_PHONE, about: { eyebrow: 'Our point of view', title: 'Made for your presence.', paragraphOne: 'MODEA is an independent women’s fashion house shaped around contemporary confidence.', paragraphTwo: 'Every collection balances fluid femininity with architectural restraint.' } } }, { new: true, upsert: true }); res.json({ data: { whatsappNumber: settings?.whatsappNumber || env.WHATSAPP_PHONE, about: settings?.about } }); });
+adminRouter.patch('/content-settings', async (req, res) => { const data = z.object({ whatsappNumber: z.string().regex(/^\d{8,15}$/), about: z.object({ eyebrow: z.string().max(80), title: z.string().max(160), paragraphOne: z.string().max(1200), paragraphTwo: z.string().max(1200) }) }).parse(req.body); res.json({ data: await Settings.findOneAndUpdate({ key: 'store' }, data, { new: true, upsert: true, runValidators: true }) }); });
+adminRouter.get('/notification-summary', async (_req, res) => { const [latestOrder, latestMessage, unreadMessages, pendingOrders] = await Promise.all([Order.findOne().sort({ createdAt: -1 }).select('_id reference createdAt'), ContactMessage.findOne().sort({ createdAt: -1 }).select('_id name createdAt'), ContactMessage.countDocuments({ read: false }), Order.countDocuments({ status: 'pending_whatsapp' })]); res.json({ data: { latestOrder, latestMessage, unreadMessages, pendingOrders, serverTime: new Date() } }); });
 adminRouter.post('/uploads/signature', (_q, res) => { if (!env.CLOUDINARY_API_SECRET || !env.CLOUDINARY_API_KEY)
     throw new AppError(503, 'UPLOADS_NOT_CONFIGURED', 'Image uploads are not configured'); const timestamp = Math.floor(Date.now() / 1000); const folder = 'modea/products'; const signature = cloudinary.utils.api_sign_request({ timestamp, folder }, env.CLOUDINARY_API_SECRET); res.json({ data: { timestamp, folder, signature, apiKey: env.CLOUDINARY_API_KEY, cloudName: env.CLOUDINARY_CLOUD_NAME } }); });
